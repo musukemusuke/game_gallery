@@ -1,4 +1,9 @@
 require('dotenv').config();
+// 環境変数の存在チェック
+if (!process.env.DISCORD_TOKEN || !process.env.CLIENT_ID) {
+  console.error('環境変数DISCORD_TOKENまたはCLIENT_IDが設定されていません！.envファイルまたはGitHub Secretsを確認してください。');
+  process.exit(1);
+}
 const { Client, GatewayIntentBits, Collection, REST, Routes, EmbedBuilder, PermissionsBitField } = require('discord.js');
 const { db, addMedia, searchMediaByTags, getAllMedia, deleteMedia, getMyMedia, searchMediaByAuthor } = require('./database.js');
 
