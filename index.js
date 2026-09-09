@@ -346,8 +346,7 @@ client.on('interactionCreate', async interaction => {
           { name: '投稿日', value: formattedDate, inline: true },
           { name: '投稿者', value: item.author_name, inline: true },
           { name: 'タグ', value: item.tags ? item.tags.split(',').map(t => `#${t}`).join(' ') : 'なし' },
-          { name: '説明', value: item.description || '説明なし' },
-          { name: 'ギャラリーメッセージ', value: `[リンクはこちら](${jumpUrl})` }
+          { name: '説明', value: item.description || '説明なし' }
         )
         .setTimestamp();
       
@@ -437,8 +436,7 @@ client.on('interactionCreate', async interaction => {
             { name: '投稿日', value: formattedDate, inline: true },
             { name: '投稿者', value: item.author_name, inline: true },
             { name: 'タグ', value: item.tags ? item.tags.split(',').map(t => `#${t}`).join(' ') : 'なし' },
-            { name: '説明', value: item.description || '説明なし' },
-            { name: 'ギャラリーメッセージ', value: `[リンクはこちら](${jumpUrl})` }
+            { name: '説明', value: item.description || '説明なし' }
           )
           .setTimestamp();
         
