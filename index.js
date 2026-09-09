@@ -318,7 +318,13 @@ client.on('interactionCreate', async interaction => {
       // 最初の1件を画像付きで表示（ページング対応）
       const currentPage = 0;
       const item = results[currentPage];
-      const channel = guild.channels.cache.get(item.channel_id);
+      // キャッシュにない場合もfetchで取得するように修正
+      let channel = null;
+      try {
+        channel = await guild.channels.fetch(item.channel_id);
+      } catch (err) {
+        console.log('アーカイブチャンネルの取得に失敗:', err);
+      }
       const jumpUrl = channel ? `https://discord.com/channels/${guild.id}/${item.channel_id}/${item.message_id}` : 'リンク無効';
       
       // JSTで日付をフォーマット
@@ -408,7 +414,13 @@ client.on('interactionCreate', async interaction => {
         }
         
         const item = state.results[state.currentPage];
-        const channel = guild.channels.cache.get(item.channel_id);
+        // キャッシュにない場合もfetchで取得するように修正
+        let channel = null;
+        try {
+          channel = await guild.channels.fetch(item.channel_id);
+        } catch (err) {
+          console.log('アーカイブチャンネルの取得に失敗:', err);
+        }
         const jumpUrl = channel ? `https://discord.com/channels/${state.guildId}/${item.channel_id}/${item.message_id}` : 'リンク無効';
         
         // JSTで日付をフォーマット
