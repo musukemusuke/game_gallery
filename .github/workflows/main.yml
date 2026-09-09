@@ -7,7 +7,7 @@ on:
     - cron: '15 15/6 * * *' # JSTの0時、6時、12時、18時に自動再起動（UTC:15:15→JST0:15、以降6時間おき）
 concurrency:
   group: discord-bot
-  cancel-in-progress: false # 実行中のジョブをキャンセルしない
+  cancel-in-progress: true # 実行中のジョブをキャンセルして新しいジョブを起動
 jobs:
   build:
     runs-on: ubuntu-latest
