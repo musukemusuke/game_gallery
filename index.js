@@ -332,18 +332,21 @@ client.on('interactionCreate', async interaction => {
       jstDate.setHours(jstDate.getHours() + 9); // UTCからJSTに変換
       const formattedDate = jstDate.toLocaleDateString('ja-JP');
       
-      // アーカイブメッセージから画像URLを取得
+      // アーカイブメッセージから画像URLを取得、失敗してもitemにmessage_urlがあればそれを使う
       let imageUrl = null;
       if (channel) {
         try {
           const archiveMessage = await channel.messages.fetch(item.message_id);
-          // 添付ファイルから最初の画像URLを取得
-          if (archiveMessage.attachments.size > 0) {
-            imageUrl = archiveMessage.attachments.first().url;
+          if (archiveMessage.embeds.length > 0 && archiveMessage.embeds[0].image) {
+            imageUrl = archiveMessage.embeds[0].image.url;
           }
         } catch (err) {
-          console.log('アーカイブメッセージの取得に失敗:', err);
+          console.log('アーカイブメッセージの取得に失敗、元のURLを使用します:', err);
         }
+      }
+      // アーカイブから取得できなかった場合、itemに保存されているURLを直接使用
+      if (!imageUrl && item.message_url) {
+        imageUrl = item.message_url;
       }
       
       let title = `🎮 ゲームギャラリー (${currentPage + 1}/${results.length})`;
@@ -428,17 +431,21 @@ client.on('interactionCreate', async interaction => {
         jstDate.setHours(jstDate.getHours() + 9);
         const formattedDate = jstDate.toLocaleDateString('ja-JP');
         
-        // アーカイブメッセージから画像URLを取得
+        // アーカイブメッセージから画像URLを取得、失敗してもitemにmessage_urlがあればそれを使う
         let imageUrl = null;
         if (channel) {
           try {
             const archiveMessage = await channel.messages.fetch(item.message_id);
-            if (archiveMessage.attachments.size > 0) {
-              imageUrl = archiveMessage.attachments.first().url;
+            if (archiveMessage.embeds.length > 0 && archiveMessage.embeds[0].image) {
+              imageUrl = archiveMessage.embeds[0].image.url;
             }
           } catch (err) {
-            console.log('アーカイブメッセージの取得に失敗:', err);
+            console.log('アーカイブメッセージの取得に失敗、元のURLを使用します:', err);
           }
+        }
+        // アーカイブから取得できなかった場合、itemに保存されているURLを直接使用
+        if (!imageUrl && item.message_url) {
+          imageUrl = item.message_url;
         }
         
         // タイトルを更新
