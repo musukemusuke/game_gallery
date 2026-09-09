@@ -4,7 +4,7 @@ if (!process.env.DISCORD_TOKEN || !process.env.CLIENT_ID) {
   console.error('環境変数DISCORD_TOKENまたはCLIENT_IDが設定されていません！.envファイルまたはGitHub Secretsを確認してください。');
   process.exit(1);
 }
-const { Client, GatewayIntentBits, Collection, REST, Routes, EmbedBuilder, PermissionsBitField, MessageFlags } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, REST, Routes, EmbedBuilder, PermissionsBitField, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { db, addMedia, searchMediaByTags, getAllMedia, deleteMedia, getMyMedia, searchMediaByAuthor } = require('./database.js');
 
 // Botクライアントの初期化
@@ -95,6 +95,9 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     console.error('コマンド登録エラー:', error);
   }
 })();
+
+// ギャラリーのページング状態を保存するマップ
+const galleryStates = new Map();
 
 // アーカイブチャンネルを取得または作成
 async function getOrCreateArchiveChannel(guild) {
@@ -301,37 +304,169 @@ client.on('interactionCreate', async interaction => {
         return interaction.editReply('ゲームギャラリーに保存されたメディアが見つかりませんでした。');
       }
       
-      // 埋め込みで一覧を表示
-      let title = `🎮 ゲームギャラリー一覧 (${results.length}件)`;
+      // 最初の1件を画像付きで表示（ページング対応）
+      const currentPage = 0;
+      const item = results[currentPage];
+      const channel = guild.channels.cache.get(item.channel_id);
+      const jumpUrl = channel ? `https://discord.com/channels/${guild.id}/${item.channel_id}/${item.message_id}` : 'リンク無効';
+      
+      // JSTで日付をフォーマット
+      const jstDate = new Date(item.timestamp);
+      jstDate.setHours(jstDate.getHours() + 9); // UTCからJSTに変換
+      const formattedDate = jstDate.toLocaleDateString('ja-JP');
+      
+      // アーカイブメッセージから画像URLを取得
+      let imageUrl = null;
+      if (channel) {
+        try {
+          const archiveMessage = await channel.messages.fetch(item.message_id);
+          // 添付ファイルから最初の画像URLを取得
+          if (archiveMessage.attachments.size > 0) {
+            imageUrl = archiveMessage.attachments.first().url;
+          }
+        } catch (err) {
+          console.log('アーカイブメッセージの取得に失敗:', err);
+        }
+      }
+      
+      let title = `🎮 ゲームギャラリー (${currentPage + 1}/${results.length})`;
       if (authorStr) {
-        title = `🎮 投稿者検索結果: 「${authorStr}」さんの投稿 (${results.length}件)`;
+        title = `🎮 投稿者検索結果: 「${authorStr}」さんの投稿 (${currentPage + 1}/${results.length})`;
       } else if (searchTags.length > 0) {
-        title = `🎮 タグ検索結果: #${searchTags.join(' #')} (${results.length}件)`;
+        title = `🎮 タグ検索結果: #${searchTags.join(' #')} (${currentPage + 1}/${results.length})`;
       } else {
-        title = `🎮 あなたの投稿 (${results.length}件)`;
+        title = `🎮 あなたの投稿 (${currentPage + 1}/${results.length})`;
       }
       
       const embed = new EmbedBuilder()
         .setTitle(title)
         .setColor(0x57F287)
+        .addFields(
+          { name: 'ID', value: String(item.id), inline: true },
+          { name: '投稿日', value: formattedDate, inline: true },
+          { name: '投稿者', value: item.author_name, inline: true },
+          { name: 'タグ', value: item.tags ? item.tags.split(',').map(t => `#${t}`).join(' ') : 'なし' },
+          { name: '説明', value: item.description || '説明なし' },
+          { name: 'ギャラリーメッセージ', value: `[リンクはこちら](${jumpUrl})` }
+        )
         .setTimestamp();
       
-      // 最大10件まで表示
-      const displayItems = results.slice(0, 10);
-      displayItems.forEach(item => {
-        const channel = guild.channels.cache.get(item.channel_id);
-        const jumpUrl = channel ? `https://discord.com/channels/${guild.id}/${item.channel_id}/${item.message_id}` : 'リンク無効';
-        embed.addFields({
-          name: `ID: ${item.id} - ${new Date(item.timestamp).toLocaleDateString('ja-JP')}`,
-          value: `投稿者: ${item.author_name}\nタグ: ${item.tags || 'なし'}\n[ギャラリーメッセージへ](${jumpUrl})`
-        });
-      });
-      
-      if (results.length > 10) {
-        embed.setFooter({ text: `...他${results.length - 10}件が存在します` });
+      if (imageUrl) {
+        embed.setImage(imageUrl);
       }
       
-      await interaction.editReply({ embeds: [embed] });
+      // ページ送りボタンを作成
+      const row = new ActionRowBuilder()
+        .addComponents(
+          new ButtonBuilder()
+            .setCustomId('prev_page')
+            .setLabel('◀ 前へ')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(currentPage === 0),
+          new ButtonBuilder()
+            .setCustomId('next_page')
+            .setLabel('次へ ▶')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(currentPage === results.length - 1)
+        );
+      
+      // ギャラリーの状態を保存（ユーザーIDとメッセージIDで識別）
+      const stateId = `${interaction.user.id}-${interaction.id}`;
+      galleryStates.set(stateId, {
+        results,
+        currentPage,
+        guildId: guild.id,
+        searchTags,
+        authorStr
+      });
+      
+      await interaction.editReply({ embeds: [embed], components: [row] });
+      
+      // ボタンのインタラクションを処理するリスナーを一時的に設定
+      const filter = i => i.user.id === interaction.user.id && (i.customId === 'prev_page' || i.customId === 'next_page');
+      const collector = interaction.channel.createMessageComponentCollector({ filter, time: 60000 }); // 60秒間有効
+      
+      collector.on('collect', async i => {
+        const state = galleryStates.get(stateId);
+        if (!state) return;
+        
+        // ページを更新
+        if (i.customId === 'prev_page') {
+          state.currentPage--;
+        } else if (i.customId === 'next_page') {
+          state.currentPage++;
+        }
+        
+        const item = state.results[state.currentPage];
+        const channel = guild.channels.cache.get(item.channel_id);
+        const jumpUrl = channel ? `https://discord.com/channels/${state.guildId}/${item.channel_id}/${item.message_id}` : 'リンク無効';
+        
+        // JSTで日付をフォーマット
+        const jstDate = new Date(item.timestamp);
+        jstDate.setHours(jstDate.getHours() + 9);
+        const formattedDate = jstDate.toLocaleDateString('ja-JP');
+        
+        // アーカイブメッセージから画像URLを取得
+        let imageUrl = null;
+        if (channel) {
+          try {
+            const archiveMessage = await channel.messages.fetch(item.message_id);
+            if (archiveMessage.attachments.size > 0) {
+              imageUrl = archiveMessage.attachments.first().url;
+            }
+          } catch (err) {
+            console.log('アーカイブメッセージの取得に失敗:', err);
+          }
+        }
+        
+        // タイトルを更新
+        let title = `🎮 ゲームギャラリー (${state.currentPage + 1}/${state.results.length})`;
+        if (state.authorStr) {
+          title = `🎮 投稿者検索結果: 「${state.authorStr}」さんの投稿 (${state.currentPage + 1}/${state.results.length})`;
+        } else if (state.searchTags.length > 0) {
+          title = `🎮 タグ検索結果: #${state.searchTags.join(' #')} (${state.currentPage + 1}/${state.results.length})`;
+        } else {
+          title = `🎮 あなたの投稿 (${state.currentPage + 1}/${state.results.length})`;
+        }
+        
+        const newEmbed = new EmbedBuilder()
+          .setTitle(title)
+          .setColor(0x57F287)
+          .addFields(
+            { name: 'ID', value: String(item.id), inline: true },
+            { name: '投稿日', value: formattedDate, inline: true },
+            { name: '投稿者', value: item.author_name, inline: true },
+            { name: 'タグ', value: item.tags ? item.tags.split(',').map(t => `#${t}`).join(' ') : 'なし' },
+            { name: '説明', value: item.description || '説明なし' },
+            { name: 'ギャラリーメッセージ', value: `[リンクはこちら](${jumpUrl})` }
+          )
+          .setTimestamp();
+        
+        if (imageUrl) {
+          newEmbed.setImage(imageUrl);
+        }
+        
+        // ボタンの状態を更新
+        const newRow = new ActionRowBuilder()
+          .addComponents(
+            new ButtonBuilder()
+              .setCustomId('prev_page')
+              .setLabel('◀ 前へ')
+              .setStyle(ButtonStyle.Primary)
+              .setDisabled(state.currentPage === 0),
+            new ButtonBuilder()
+              .setCustomId('next_page')
+              .setLabel('次へ ▶')
+              .setStyle(ButtonStyle.Primary)
+              .setDisabled(state.currentPage === state.results.length - 1)
+          );
+        
+        await i.update({ embeds: [newEmbed], components: [newRow] });
+      });
+      
+      collector.on('end', () => {
+        galleryStates.delete(stateId);
+      });
       
     } catch (error) {
         console.error('galleryコマンドエラー:', error);
