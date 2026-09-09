@@ -175,16 +175,30 @@ client.on('interactionCreate', async interaction => {
       const description = interaction.options.getString('description') || '';
       const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(t => t) : [];
       
-      // メッセージを取得
-      const targetMessage = await fetchMessageFromLink(messageLink, guild);
-      if (!targetMessage) {
-        return interaction.editReply('メッセージが見つかりませんでした。リンクが正しいか確認してください。');
-      }
+      // 画像直接URLかメッセージリンクかを判定
+      const imageUrlMatch = messageLink.match(/^https:\/\/cdn\.discordapp\.com\/attachments\//);
+      let targetAttachments = [];
+      let authorId = interaction.user.id;
+      let authorName = interaction.user.username;
       
-      // メディアが含まれているか確認
-      const hasAttachments = targetMessage.attachments.size > 0;
-      if (!hasAttachments) {
-        return interaction.editReply('指定されたメッセージに画像や動画の添付ファイルが含まれていません。');
+      if (imageUrlMatch) {
+        // 直接画像URLが渡された場合
+        targetAttachments = [{ url: messageLink }];
+      } else {
+        // 通常のメッセージリンクの場合
+        const targetMessage = await fetchMessageFromLink(messageLink, guild);
+        if (!targetMessage) {
+          return interaction.editReply('メッセージが見つかりませんでした。リンクが正しいか確認してください。');
+        }
+        
+        const hasAttachments = targetMessage.attachments.size > 0;
+        if (!hasAttachments) {
+          return interaction.editReply('指定されたメッセージに画像や動画の添付ファイルが含まれていません。');
+        }
+        
+        targetAttachments = Array.from(targetMessage.attachments.values());
+        authorId = targetMessage.author.id;
+        authorName = targetMessage.author.username;
       }
       
       // archiveチャンネルを取得
@@ -195,8 +209,8 @@ client.on('interactionCreate', async interaction => {
         .setTitle('🎮 ゲームギャラリーに追加')
         .setDescription(description || '説明なし')
         .addFields(
-          { name: '投稿者', value: `<@${targetMessage.author.id}>`, inline: true },
-          { name: '元のメッセージ', value: `[リンク](${messageLink})`, inline: true }
+          { name: '投稿者', value: `<@${authorId}>`, inline: true },
+          { name: '元のリンク', value: `[リンク](${messageLink})`, inline: true }
         )
         .setTimestamp()
         .setColor(0x5865F2);
@@ -206,19 +220,18 @@ client.on('interactionCreate', async interaction => {
       }
       
       // 最初の添付ファイルを埋め込み
-      const firstAttachment = targetMessage.attachments.first();
-      if (firstAttachment && firstAttachment.url) {
-        galleryEmbed.setImage(firstAttachment.url);
+      if (targetAttachments[0] && targetAttachments[0].url) {
+        galleryEmbed.setImage(targetAttachments[0].url);
       }
       
       // 全ての添付ファイルのURLを追加
-      let attachmentsText = targetMessage.attachments.map(a => a.url).join('\n');
+      let attachmentsText = targetAttachments.map(a => a.url).join('\n');
       const sentMessage = await archiveChannel.send({
         embeds: [galleryEmbed],
         content: `添付ファイル一覧:\n${attachmentsText}`
       });
       
-      // データベースに登録（アーカイブチャンネルに投稿したメッセージのIDを正しく渡す）
+      // データベースに登録
       addMedia(
         guild.id,
         sentMessage.id,
