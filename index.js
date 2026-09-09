@@ -360,7 +360,6 @@ client.on('interactionCreate', async interaction => {
       interaction.editReply('コマンドの実行中にエラーが発生しました。');
     }
   }
-}
   
   if (commandName === 'help') {
     await interaction.deferReply({ ephemeral: true });
