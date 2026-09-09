@@ -155,8 +155,19 @@ async function fetchMessageFromLink(link, guild) {
 }
 
 // クライアント起動時
-client.on('clientReady', () => {
+client.on('clientReady', async () => {
   console.log(`ログイン完了: ${client.user.tag}`);
+  
+  // 起動時に参加している全サーバーでアーカイブチャンネルを確認・作成
+  for (const guild of client.guilds.cache.values()) {
+    await getOrCreateArchiveChannel(guild);
+  }
+});
+
+// 新しくサーバーに参加した時
+client.on('guildCreate', async (guild) => {
+  console.log(`新しいサーバーに参加しました: ${guild.name}`);
+  await getOrCreateArchiveChannel(guild);
 });
 
 // インタラクション処理
