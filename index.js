@@ -4,7 +4,7 @@ if (!process.env.DISCORD_TOKEN || !process.env.CLIENT_ID) {
   console.error('環境変数DISCORD_TOKENまたはCLIENT_IDが設定されていません！.envファイルまたはGitHub Secretsを確認してください。');
   process.exit(1);
 }
-const { Client, GatewayIntentBits, Collection, REST, Routes, EmbedBuilder, PermissionsBitField } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, REST, Routes, EmbedBuilder, PermissionsBitField, Flags } = require('discord.js');
 const { db, addMedia, searchMediaByTags, getAllMedia, deleteMedia, getMyMedia, searchMediaByAuthor } = require('./database.js');
 
 // Botクライアントの初期化
@@ -146,7 +146,7 @@ async function fetchMessageFromLink(link, guild) {
 }
 
 // クライアント起動時
-client.on('ready', () => {
+client.on('clientReady', () => {
   console.log(`ログイン完了: ${client.user.tag}`);
 });
 
@@ -162,12 +162,12 @@ client.on('interactionCreate', async interaction => {
   if (interaction.user.id !== owner.id) {
     return interaction.reply({
       content: 'このコマンドはサーバーオーナーのみが使用できます。',
-      ephemeral: true
+      flags: [Flags.Ephemeral]
     });
   }
   
   if (commandName === 'add') {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: [Flags.Ephemeral] });
     
     try {
       const messageLink = interaction.options.getString('message_link');
@@ -244,7 +244,7 @@ client.on('interactionCreate', async interaction => {
   }
   
   if (commandName === 'gallery') {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: [Flags.Ephemeral] });
     
     try {
       const tagsStr = interaction.options.getString('tags');
@@ -318,7 +318,7 @@ client.on('interactionCreate', async interaction => {
   }
   
   if (commandName === 'delete') {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: [Flags.Ephemeral] });
     
     try {
       const mediaId = interaction.options.getInteger('media_id');
@@ -367,7 +367,7 @@ client.on('interactionCreate', async interaction => {
   }
   
   if (commandName === 'help') {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: [Flags.Ephemeral] });
     
     const helpEmbed = new EmbedBuilder()
       .setTitle('🎮 ゲームギャラリーbot 使い方ガイド')
