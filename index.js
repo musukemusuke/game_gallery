@@ -390,7 +390,7 @@ client.on('interactionCreate', async interaction => {
           value: 'このヘルプメッセージを表示します。'
         }
       )
-      .setFooter({ text: 'メッセージリンクの取得方法：Discordのメッセージを右クリック→「メッセージリンクをコピー」' });
+      .setFooter({ text: 'メッセージリンクの取得方法：PCの場合→メッセージを右クリック→「メッセージリンクをコピー」｜スマホの場合→メッセージを長押し→「リンクをコピー」' });
     
     await interaction.editReply({ embeds: [helpEmbed] });
   }
