@@ -12,7 +12,7 @@ const db = new sqlite3.Database('./game_gallery.db', (err) => {
 
 // テーブルを初期化
 function initDatabase() {
-  // ゲームメディアテーブルを作成
+  // ゲームメディアテーブルを作成（archive_message_idカラムを最初から含める）
   db.run(`CREATE TABLE IF NOT EXISTS media (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
@@ -27,9 +27,20 @@ function initDatabase() {
     if (err) {
       console.error('mediaテーブル作成エラー:', err);
     } else {
-      // テーブル作成完了後にカラム追加処理を実行
-      db.run(`ALTER TABLE media ADD COLUMN IF NOT EXISTS archive_message_id TEXT`, (alterErr) => {
-        if (alterErr) console.log('カラム追加済み、またはエラー:', alterErr);
+      // 古いSQLiteでIF NOT EXISTSが使えないため、PRAGMAでカラムの存在を確認してから追加
+      db.all(`PRAGMA table_info(media)`, (pragErr, rows) => {
+        if (pragErr) {
+          console.log('テーブル情報取得エラー:', pragErr);
+          return;
+        }
+        // archive_message_idカラムが存在しない場合のみALTER TABLEを実行
+        const hasColumn = rows.some(row => row.name === 'archive_message_id');
+        if (!hasColumn) {
+          db.run(`ALTER TABLE media ADD COLUMN archive_message_id TEXT`, (alterErr) => {
+            if (alterErr) console.log('カラム追加エラー:', alterErr);
+            else console.log('archive_message_idカラムを追加しました');
+          });
+        }
       });
     }
   });
