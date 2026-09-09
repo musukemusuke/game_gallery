@@ -370,24 +370,25 @@ client.on('interactionCreate', async interaction => {
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
     
     const helpEmbed = new EmbedBuilder()
-      .setTitle('🎮 ゲームギャラリーbot 使い方ガイド')
-      .setColor(0x2ecc71)
+      .setTitle('🎮 ゲームギャラリーbot 使い方')
+      .setColor(0x5865F2)
+      .setDescription('ゲームのスクショ・動画を保存・共有するBotです')
       .addFields(
         {
-          name: '/add <message_link> [tags] [description]',
-          value: 'ゲームのスクリーンショットや動画をギャラリーに追加します。\n**message_link**: 保存したいメッセージのリンク（必須）\n**tags**: カンマ区切りのタグ（任意）\n**description**: メディアの説明（任意）\n投稿したメディアはサーバー内の「アーカイブ」チャンネルにも保存されます。'
+          name: '➕ /add',
+          value: 'メディアを追加\n`<message_link>`（必須）保存したいメッセージのリンク\n`[tags]`（任意）カンマ区切りのタグ\n`[description]`（任意）メディアの説明\n※「アーカイブ」チャンネルにも保存されます'
         },
         {
-          name: '/gallery [tags] [author]',
-          value: 'ギャラリーに保存されているメディアの一覧を表示します。\n**tags**: フィルタリングするタグ（任意）\n**author**: 検索する投稿者の名前（部分一致で検索可能、任意）\n✅ デフォルト：自分が追加したメディアだけを表示\n✅ authorパラメータで他のユーザーの投稿も検索可能\nボタンでページ送りが可能で、1ページに10件表示されます。'
+          name: '🖼️ /gallery',
+          value: 'メディア一覧を表示\n`[tags]`（任意）タグで絞り込み\n`[author]`（任意）投稿者名で検索\n✅ デフォルト：自分の投稿のみ表示\n✅ ボタンでページ送り可能（10件/ページ）'
         },
         {
-          name: '/delete <media_id>',
-          value: 'ギャラリーから指定したIDのメディアを削除します。\n**media_id**: 削除したいメディアのID（/galleryで確認可能、必須）\n✅ 削除可能なユーザー：\n・メディアを投稿した本人\n・サーバーオーナー\n※削除するとBotのギャラリーと「アーカイブ」チャンネルの両方から削除されます。'
+          name: '🗑️ /delete',
+          value: 'メディアを削除\n`<media_id>`（必須）削除したいID（/galleryで確認）\n✅ 本人またはサーバーオーナーのみ実行可\n※ギャラリーとアーカイブ両方から削除'
         },
         {
-          name: '/help',
-          value: 'このヘルプメッセージを表示します。'
+          name: '❓ /help',
+          value: 'このヘルプを表示します'
         }
       )
       .setFooter({ text: 'メッセージリンクの取得方法：PCの場合→メッセージを右クリック→「メッセージリンクをコピー」｜スマホの場合→メッセージを長押し→「リンクをコピー」' });
