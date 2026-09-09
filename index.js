@@ -102,27 +102,33 @@ async function getOrCreateArchiveChannel(guild) {
   let archiveChannel = guild.channels.cache.find(ch => ch.name === 'アーカイブ' && ch.isTextBased());
   
   if (!archiveChannel) {
-    // サーバー作成者（オーナー）のみが閲覧できるチャンネルを作成
-    const owner = await guild.fetchOwner();
-    archiveChannel = await guild.channels.create({
-      name: 'アーカイブ',
-      type: 0, // テキストチャンネル
-      permissionOverwrites: [
-        {
-          id: guild.id, // 全員
-          deny: [PermissionsBitField.Flags.ViewChannel]
-        },
-        {
-          id: owner.id, // サーバーオーナー
-          allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.ReadMessageHistory]
-        },
-        {
-          id: client.user.id, // Bot自身
-          allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory]
-        }
-      ]
-    });
-    console.log(`[${guild.name}] アーカイブチャンネルを作成しました`);
+    try {
+      // サーバー作成者（オーナー）のみが閲覧できるチャンネルを作成
+      const owner = await guild.fetchOwner();
+      archiveChannel = await guild.channels.create({
+        name: 'アーカイブ',
+        type: 0, // テキストチャンネル
+        permissionOverwrites: [
+          {
+            id: guild.id, // 全員
+            deny: [PermissionsBitField.Flags.ViewChannel]
+          },
+          {
+            id: owner.id, // サーバーオーナー
+            allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.ReadMessageHistory]
+          },
+          {
+            id: client.user.id, // Bot自身
+            allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory, PermissionsBitField.Flags.ManageMessages]
+          }
+        ]
+      });
+      console.log(`[${guild.name}] アーカイブチャンネルを作成しました`);
+    } catch (err) {
+      // 権限不足でチャンネル作成できない場合のエラーハンドリング
+      console.error('アーカイブチャンネルの作成に失敗:', err);
+      return null;
+    }
   }
   return archiveChannel;
 }
@@ -203,6 +209,9 @@ client.on('interactionCreate', async interaction => {
       
       // archiveチャンネルを取得
       const archiveChannel = await getOrCreateArchiveChannel(guild);
+      if (!archiveChannel) {
+        return interaction.editReply('⚠️ アーカイブチャンネルの作成に失敗しました。サーバー管理者に以下を依頼してください：\n1. Botに「チャンネルを管理する」権限を付与する\n2. または手動で「アーカイブ」という名前のテキストチャンネルを作成する');
+      }
       
       // アーカイブチャンネルに転記
       const galleryEmbed = new EmbedBuilder()
