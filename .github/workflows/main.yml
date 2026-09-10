@@ -1,30 +1,40 @@
-name: Discord Bot
+name: Run Discord Bot
+
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:
   schedule:
-    - cron: '15 15/6 * * *' # JSTの0時、6時、12時、18時に自動再起動（UTC:15:15→JST0:15、以降6時間おき）
+    # 3時間ごとに自動起動してバトンを繋ぐ（GitHub Actionsの6時間制限対策）
+    - cron: '0 */3 * * *'
+  workflow_dispatch: # 手動起動ボタンを追加
+
 concurrency:
-  group: discord-bot
-  cancel-in-progress: true # 実行中のジョブをキャンセルして新しいジョブを起動
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
+  run-bot:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Setup Node.js
+      - name: Checkout code safely
+        uses: actions/checkout@v5 # 最新環境に対応したv5を使用
+
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24' # Node.js24を指定して非推奨警告を解消
+          cache: 'npm' # npmキャッシュでインストールを高速化
+
       - name: Install dependencies
         run: npm install
+
       - name: Create .env file
         run: |
           echo "DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}" >> .env
           echo "CLIENT_ID=${{ secrets.CLIENT_ID }}" >> .env
+
       - name: Start Bot
-        run: npm start
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
+        run: npm start
