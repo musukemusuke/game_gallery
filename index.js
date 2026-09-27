@@ -137,10 +137,21 @@ client.on('interactionCreate', async interaction => {
 
   // コマンド実行者がサーバーオーナーか確認 (isChatInputCommandの場合のみ)
   if (interaction.isChatInputCommand()) {
-    const owner = await guild.fetchOwner();
-    if (interaction.user.id !== owner.id) {
+    console.log(`[${new Date().toISOString()}] サーバーオーナーチェックを開始します。`);
+    try {
+      const owner = await guild.fetchOwner();
+      if (interaction.user.id !== owner.id) {
+        console.log(`[${new Date().toISOString()}] コマンド実行者 (${interaction.user.id}) はサーバーオーナーではありません (${owner.id})。`);
+        return interaction.reply({
+          content: 'このコマンドはサーバーオーナーのみが使用できます。',
+          flags: [MessageFlags.Ephemeral]
+        });
+      }
+      console.log(`[${new Date().toISOString()}] コマンド実行者 (${interaction.user.id}) はサーバーオーナーです。`);
+    } catch (error) {
+      console.error(`[${new Date().toISOString()}] サーバーオーナーの取得中にエラーが発生しました:`, error);
       return interaction.reply({
-        content: 'このコマンドはサーバーオーナーのみが使用できます。',
+        content: 'サーバーオーナーの確認中にエラーが発生しました。Botに「サーバー管理」権限があるか確認してください。',
         flags: [MessageFlags.Ephemeral]
       });
     }
