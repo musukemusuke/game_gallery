@@ -282,7 +282,260 @@ client.on('interactionCreate', async interaction => {
       console.error('addコマンドエラー:', error);
       interaction.editReply('コマンドの実行中にエラーが発生しました。');
     }
+  } else if (interaction.customId === 'galleryFilterModal') {
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+    
+    try {
+      const tagsStr = interaction.fields.getTextInputValue('tags') || '';
+      const authorStr = interaction.fields.getTextInputValue('author') || '';
+      const searchTags = tagsStr ? tagsStr.split(',').map(t => t.trim().toLowerCase()).filter(t => t) : [];
+      
+      let results;
+      if (authorStr) {
+        results = await new Promise((resolve, reject) => {
+          searchMediaByAuthor(guild.id, authorStr, (err, rows) => {
+            if (err) return reject(err);
+            resolve(rows);
+          });
+        });
+      } else if (searchTags.length > 0) {
+        results = await new Promise((resolve, reject) => {
+          searchMediaByTags(guild.id, searchTags, (err, rows) => {
+            if (err) return reject(err);
+            resolve(rows);
+          });
+        });
+      } else {
+        results = await new Promise((resolve, reject) => {
+          getMyMedia(guild.id, interaction.user.id, (err, rows) => {
+            if (err) return reject(err);
+            resolve(rows);
+          });
+        });
+      }
+      
+      if (!results || results.length === 0) {
+        return interaction.editReply('ゲームギャラリーに保存されたメディアが見つかりませんでした。');
+      }
+      
+      // 最初の1件を画像付きで表示（ページング対応）
+      const currentPage = 0;
+      const item = results[currentPage];
+      // キャッシュにない場合もfetchで取得するように修正
+      let channel = null;
+      try {
+        channel = await guild.channels.fetch(item.channel_id);
+      } catch (err) {
+        console.log('アーカイブチャンネルの取得に失敗:', err);
+      }
+      const jumpUrl = channel ? `https://discord.com/channels/${guild.id}/${item.channel_id}/${item.message_id}` : 'リンク無効';
+      
+      // JSTで日付をフォーマット
+      const jstDate = new Date(item.timestamp);
+      jstDate.setHours(jstDate.getHours() + 9); // UTCからJSTに変換
+      const formattedDate = jstDate.toLocaleDateString('ja-JP');
+      
+      // アーカイブメッセージから画像URLを取得、失敗してもitemにmessage_urlがあればそれを使う
+      let imageUrl = null;
+      if (channel) {
+        try {
+          const archiveMessage = await channel.messages.fetch(item.message_id);
+          if (archiveMessage.embeds.length > 0 && archiveMessage.embeds[0].image) {
+            imageUrl = archiveMessage.embeds[0].image.url;
+          }
+        } catch (err) {
+          console.log('アーカイブメッセージの取得に失敗、元のURLを使用します:', err);
+        }
+      }
+      // アーカイブから取得できなかった場合、itemに保存されているURLを直接使用
+      if (!imageUrl && item.message_url) {
+        imageUrl = item.message_url;
+      }
+      
+      let title = `🎮 ゲームギャラリー (${currentPage + 1}/${results.length})`;
+      if (authorStr) {
+        title = `🎮 投稿者検索結果: 「${authorStr}」さんの投稿 (${currentPage + 1}/${results.length})`;
+      } else if (searchTags.length > 0) {
+        title = `🎮 タグ検索結果: #${searchTags.join(' #')} (${currentPage + 1}/${results.length})`;
+      } else {
+        title = `🎮 あなたの投稿 (${currentPage + 1}/${results.length})`;
+      }
+      
+      const embed = new EmbedBuilder()
+        .setTitle(title)
+        .setColor(0x57F287)
+        .addFields(
+          { name: 'ID', value: String(item.id), inline: true },
+          { name: '投稿日', value: formattedDate, inline: true },
+          { name: '投稿者', value: item.author_name, inline: true },
+          { name: 'タグ', value: item.tags ? item.tags.split(',').map(t => `#${t}`).join(' ') : 'なし' },
+          { name: '説明', value: item.description || '説明なし' }
+        )
+        .setTimestamp();
+      
+      if (imageUrl) {
+        embed.setImage(imageUrl);
+      }
+      
+      // ページ送りボタンを作成
+      const row = new ActionRowBuilder()
+        .addComponents(
+          new ButtonBuilder()
+            .setCustomId('prev_page')
+            .setLabel('◀ 前へ')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(currentPage === 0),
+          new ButtonBuilder()
+            .setCustomId('next_page')
+            .setLabel('次へ ▶')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(currentPage === results.length - 1)
+        );
+      
+      // ギャラリーの状態を保存（ユーザーIDとメッセージIDで識別）
+      const stateId = `${interaction.user.id}-${interaction.id}`;
+      galleryStates.set(stateId, {
+        results,
+        currentPage,
+        authorStr,
+        searchTags,
+        guildId: guild.id
+      });
+      
+      await interaction.editReply({ embeds: [embed], components: [row] });
+      
+      // ボタンのインタラクションを処理
+      const collector = interaction.channel.createMessageComponentCollector({ time: 300000 });
+      collector.on('collect', async i => {
+        if (i.user.id !== interaction.user.id) return;
+        
+        const state = galleryStates.get(stateId);
+        if (!state) return;
+        
+        if (i.customId === 'prev_page' && state.currentPage > 0) {
+          state.currentPage--;
+        } else if (i.customId === 'next_page' && state.currentPage < state.results.length - 1) {
+          state.currentPage++;
+        }
+        
+        const newItem = state.results[state.currentPage];
+        let newImageUrl = null;
+        try {
+          const newChannel = await guild.channels.fetch(newItem.channel_id);
+          if (newChannel) {
+            const newArchiveMessage = await newChannel.messages.fetch(newItem.message_id);
+            if (newArchiveMessage.embeds.length > 0 && newArchiveMessage.embeds[0].image) {
+              newImageUrl = newArchiveMessage.embeds[0].image.url;
+            }
+          }
+        } catch (err) {
+          console.log('アーカイブメッセージの取得に失敗、元のURLを使用します:', err);
+        }
+        if (!newImageUrl && newItem.message_url) {
+          newImageUrl = newItem.message_url;
+        }
+        
+        // タイトルを更新
+        let newTitle = `🎮 ゲームギャラリー (${state.currentPage + 1}/${state.results.length})`;
+        if (state.authorStr) {
+          newTitle = `🎮 投稿者検索結果: 「${state.authorStr}」さんの投稿 (${state.currentPage + 1}/${state.results.length})`;
+        } else if (state.searchTags.length > 0) {
+          newTitle = `🎮 タグ検索結果: #${state.searchTags.join(' #')} (${state.currentPage + 1}/${state.results.length})`;
+        } else {
+          newTitle = `🎮 あなたの投稿 (${state.currentPage + 1}/${state.results.length})`;
+        }
+        
+        const newEmbed = new EmbedBuilder()
+          .setTitle(newTitle)
+          .setColor(0x57F287)
+          .addFields(
+            { name: 'ID', value: String(newItem.id), inline: true },
+            { name: '投稿日', value: formattedDate, inline: true },
+            { name: '投稿者', value: newItem.author_name, inline: true },
+            { name: 'タグ', value: newItem.tags ? newItem.tags.split(',').map(t => `#${t}`).join(' ') : 'なし' },
+            { name: '説明', value: newItem.description || '説明なし' }
+          )
+          .setTimestamp();
+        
+        if (newImageUrl) {
+          newEmbed.setImage(newImageUrl);
+        }
+        
+        // ボタンの状態を更新
+        const newRow = new ActionRowBuilder()
+          .addComponents(
+            new ButtonBuilder()
+              .setCustomId('prev_page')
+              .setLabel('◀ 前へ')
+              .setStyle(ButtonStyle.Primary)
+              .setDisabled(state.currentPage === 0),
+            new ButtonBuilder()
+              .setCustomId('next_page')
+              .setLabel('次へ ▶')
+              .setStyle(ButtonStyle.Primary)
+              .setDisabled(state.currentPage === state.results.length - 1)
+          );
+        
+        await i.update({ embeds: [newEmbed], components: [newRow] });
+      });
+      
+      collector.on('end', () => {
+        galleryStates.delete(stateId);
+      });
+      
+    } catch (error) {
+        console.error('galleryコマンドエラー:', error);
+        interaction.editReply('コマンドの実行中にエラーが発生しました。');
+      }
+  } else if (interaction.customId === 'deleteMediaModal') {
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+    
+    try {
+      const mediaId = parseInt(interaction.fields.getTextInputValue('media_id'));
+      
+      // データベースからメディア情報と投稿者IDを取得（本人確認のため）
+      db.get(`SELECT archive_message_id, author_id FROM media WHERE guild_id = ? AND id = ?`, [guild.id, mediaId], async (err, row) => {
+        if (err || !row) {
+          console.error('メディア取得エラー:', err);
+          return interaction.editReply(`指定されたID:${mediaId}のメディアが見つかりませんでした。IDが正しいか確認してください。`);
+        }
+
+        // 投稿者本人、またはサーバーオーナー以外は削除不可
+        if (row.author_id !== interaction.user.id && interaction.user.id !== guild.ownerId) {
+          return interaction.editReply('このメディアを削除する権限がありません。自分が投稿したメディアのみ削除可能です。');
+        }
+
+        // アーカイブチャンネルのメッセージを削除
+        const archiveChannel = await getOrCreateArchiveChannel(guild);
+        if (archiveChannel && row.archive_message_id) {
+          try {
+            const archiveMessage = await archiveChannel.messages.fetch(row.archive_message_id);
+            if (archiveMessage) {
+              await archiveMessage.delete();
+              console.log(`[${guild.name}] アーカイブチャンネルのメッセージ${row.archive_message_id}を削除しました`);
+            }
+          } catch (msgErr) {
+            console.log('アーカイブメッセージの削除に失敗（既に削除済みの可能性あり）:', msgErr);
+          }
+        }
+
+        // データベースから削除
+        deleteMedia(guild.id, mediaId, async (err, changes) => {
+          if (err) {
+            console.error('データベース削除エラー:', err);
+            return interaction.editReply('削除中にエラーが発生しました。');
+          }
+          
+          interaction.editReply(`✅ ID:${mediaId}のメディアをアーカイブからも削除しました。`);
+        });
+      });
+      
+    } catch (error) {
+      console.error('deleteコマンドエラー:', error);
+      interaction.editReply('コマンドの実行中にエラーが発生しました。');
+    }
   }
+}
   
   if (commandName === 'gallery') {
     // /galleryコマンド実行時にモーダルを表示
@@ -536,7 +789,6 @@ client.on('interactionCreate', async interaction => {
         console.error('galleryコマンドエラー:', error);
         interaction.editReply('コマンドの実行中にエラーが発生しました。');
       }
-  }
   
   if (commandName === 'delete') {
     // /deleteコマンド実行時にモーダルを表示
@@ -608,6 +860,7 @@ client.on('interactionCreate', async interaction => {
       interaction.editReply('コマンドの実行中にエラーが発生しました。');
     }
   }
+  } // isModalSubmit()ブロックを閉じる
   
   if (commandName === 'help') {
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
