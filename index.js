@@ -157,9 +157,10 @@ client.on('interactionCreate', async interaction => {
     }
     } else if (interaction.isChatInputCommand()) {
       if (commandName === 'add') {
-        const modal = new ModalBuilder()
-          .setCustomId('addMediaModal')
-          .setTitle('ゲームギャラリーにメディアを追加');
+        console.log(`[${new Date().toISOString()}] /add コマンド処理を開始します。`);
+      const modal = new ModalBuilder()
+        .setCustomId('addMediaModal')
+        .setTitle('ゲームギャラリーにメディアを追加');
 
         const messageLinkInput = new TextInputBuilder()
           .setCustomId('messageLinkInput')
@@ -188,9 +189,10 @@ client.on('interactionCreate', async interaction => {
        console.log(`[${new Date().toISOString()}] /add コマンド: モーダル表示を試行します。`);
         await interaction.showModal(modal);
       } else if (commandName === 'gallery') {
-        const modal = new ModalBuilder()
-          .setCustomId('gallerySearchModal')
-          .setTitle('ギャラリーを検索');
+        console.log(`[${new Date().toISOString()}] /gallery コマンド処理を開始します。`);
+      const modal = new ModalBuilder()
+        .setCustomId('gallerySearchModal')
+        .setTitle('ギャラリーを検索');
 
         const tagsInput = new TextInputBuilder()
           .setCustomId('tagsInput')
@@ -212,9 +214,10 @@ client.on('interactionCreate', async interaction => {
         console.log(`[${new Date().toISOString()}] /gallery コマンド: モーダル表示を試行します。`);
         await interaction.showModal(modal);
       } else if (commandName === 'delete') {
-        const modal = new ModalBuilder()
-          .setCustomId('deleteMediaModal')
-          .setTitle('メディアを削除');
+        console.log(`[${new Date().toISOString()}] /delete コマンド処理を開始します。`);
+      const modal = new ModalBuilder()
+        .setCustomId('deleteMediaModal')
+        .setTitle('メディアを削除');
 
         const mediaIdInput = new TextInputBuilder()
           .setCustomId('mediaIdInput')
@@ -227,7 +230,8 @@ client.on('interactionCreate', async interaction => {
         console.log(`[${new Date().toISOString()}] /delete コマンド: モーダル表示を試行します。`);
         await interaction.showModal(modal);
       } else if (commandName === 'help') {
-        console.log(`[${new Date().toISOString()}] /help コマンド: deferReply を試行します。`);
+        console.log(`[${new Date().toISOString()}] /help コマンド処理を開始します。`);
+      console.log(`[${new Date().toISOString()}] /help コマンド: deferReply を試行します。`);
       await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
       
       const helpEmbed = new EmbedBuilder()
