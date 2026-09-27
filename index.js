@@ -93,20 +93,31 @@ async function getOrCreateArchiveChannel(guild) {
   return archiveChannel;
 }
 
-// メッセージリンクからメッセージを取得
-async function fetchMessageFromLink(link, guild) {
-  try {
-    const match = link.match(/channels\/(\d+)\/(\d+)\/(\d+)/);
-    if (!match) return null;
-    
-    const [, guildId, channelId, messageId] = match;
-    if (guildId !== guild.id) return null;
-    
-    const channel = await guild.channels.fetch(channelId);
-    if (!channel || !channel.isTextBased()) return null;
-    
-    return await channel.messages.fetch(messageId);
-  } catch (err) {
+// メッセージリンクまたは直接メディアURLからメディア情報を取得
+async function fetchMediaFromLink(link, guild) {
+  // Discordメッセージリンクの正規表現
+  const messageLinkMatch = link.match(/https:\/\/discord\.com\/channels\/(\d+)\/(\d+)\/(\d+)/);
+  // 直接メディアURLの正規表現 (cdn.discordapp.comなど)
+  const directMediaUrlMatch = link.match(/https:\/\/cdn\.discordapp\.com\/attachments\/\d+\/\d+\/[^/]+\.(png|jpg|jpeg|gif|mp4|mov|webm|webp)/i);
+
+  if (messageLinkMatch) {
+    const [, guildId, channelId, messageId] = messageLinkMatch;
+    if (guildId !== guild.id) return null; // 異なるサーバーのメッセージリンクは無視
+
+    try {
+      const channel = await guild.channels.fetch(channelId);
+      if (!channel || !channel.isTextBased()) return null;
+      const message = await channel.messages.fetch(messageId);
+      return { type: 'message', data: message };
+    } catch (err) {
+      console.error('メッセージの取得中にエラーが発生しました:', err);
+      return null;
+    }
+  } else if (directMediaUrlMatch) {
+    // 直接メディアURLの場合
+    return { type: 'direct_url', data: { url: link } };
+  } else {
+    // どちらでもない場合
     return null;
   }
 }
@@ -236,48 +247,87 @@ client.on('interactionCreate', async interaction => {
         return interaction.editReply('アーカイブチャンネルの取得または作成に失敗しました。');
       }
 
-      const fetchedMessage = await fetchMessageFromLink(messageLink, guild);
-      if (!fetchedMessage) {
-        return interaction.editReply('指定されたメッセージが見つからないか、アクセスできません。リンクが正しいか、Botに適切な権限があるか確認してください。');
+      const mediaInfo = await fetchMediaFromLink(messageLink, guild);
+      if (!mediaInfo) {
+        return interaction.editReply('指定されたリンクが見つからないか、アクセスできません。リンクが正しいか、Botに適切な権限があるか確認してください。');
       }
 
-      if (fetchedMessage.attachments.size === 0 && !fetchedMessage.content) {
-        return interaction.editReply('添付ファイルまたはテキストコンテンツがないメッセージはギャラリーに追加できません。');
-      }
-
+      let mediaIdToSave = null;
+      let channelIdToSave = null;
+      let authorIdToSave = interaction.user.id; // コマンド実行者をデフォルトの投稿者とする
+      let authorNameToSave = interaction.user.username;
       let archiveMessage;
-      try {
-        const embed = new EmbedBuilder()
-          .setTitle('ギャラリー追加メディア')
-          .setDescription(description || '説明なし')
-          .addFields(
-            { name: '元メッセージ', value: messageLink },
-            { name: '投稿者', value: fetchedMessage.author.tag, inline: true },
-            { name: 'タグ', value: tags.length > 0 ? tags.join(', ') : 'なし', inline: true }
-          )
-          .setTimestamp();
+      let mediaUrlForEmbed = null; // Embedに設定するメディアURL
 
-        if (fetchedMessage.attachments.size > 0) {
-          embed.setImage(fetchedMessage.attachments.first().url);
+      if (mediaInfo.type === 'message') {
+        const fetchedMessage = mediaInfo.data;
+        if (fetchedMessage.attachments.size === 0 && !fetchedMessage.content) {
+          return interaction.editReply('添付ファイルまたはテキストコンテンツがないメッセージはギャラリーに追加できません。');
         }
+        mediaIdToSave = fetchedMessage.id;
+        channelIdToSave = fetchedMessage.channel.id;
+        authorIdToSave = fetchedMessage.author.id;
+        authorNameToSave = fetchedMessage.author.username;
+        mediaUrlForEmbed = fetchedMessage.attachments.size > 0 ? fetchedMessage.attachments.first().url : null;
 
-        archiveMessage = await archiveChannel.send({
-          content: `元メッセージ: ${messageLink}\n投稿者: ${fetchedMessage.author.tag}\nタグ: ${tags.join(', ')}\n説明: ${description || 'なし'}`,
-          embeds: [embed],
-          files: fetchedMessage.attachments.map(attachment => attachment.url)
-        });
-      } catch (error) {
-        console.error('アーカイブチャンネルへのメッセージ送信中にエラーが発生しました:', error);
-        return interaction.editReply('メディアのアーカイブ中にエラーが発生しました。Botにアーカイブチャンネルへの送信権限があるか確認してください。');
+        try {
+          const embed = new EmbedBuilder()
+            .setTitle('ギャラリー追加メディア')
+            .setDescription(description || '説明なし')
+            .addFields(
+              { name: '元メッセージ', value: messageLink },
+              { name: '投稿者', value: authorNameToSave, inline: true },
+              { name: 'タグ', value: tags.length > 0 ? tags.join(', ') : 'なし', inline: true }
+            )
+            .setTimestamp();
+
+          if (mediaUrlForEmbed) {
+            embed.setImage(mediaUrlForEmbed);
+          }
+
+          archiveMessage = await archiveChannel.send({
+            content: `元メッセージ: ${messageLink}\n投稿者: ${authorNameToSave}\nタグ: ${tags.join(', ')}\n説明: ${description || 'なし'}`,
+            embeds: [embed],
+            files: fetchedMessage.attachments.map(attachment => attachment.url)
+          });
+        } catch (error) {
+          console.error('アーカイブチャンネルへのメッセージ送信中にエラーが発生しました:', error);
+          return interaction.editReply('メディアのアーカイブ中にエラーが発生しました。Botにアーカイブチャンネルへの送信権限があるか確認してください。');
+        }
+      } else if (mediaInfo.type === 'direct_url') {
+        const directUrl = mediaInfo.data.url;
+        mediaUrlForEmbed = directUrl;
+
+        try {
+          const embed = new EmbedBuilder()
+            .setTitle('ギャラリー追加メディア')
+            .setDescription(description || '説明なし')
+            .addFields(
+              { name: '元URL', value: directUrl },
+              { name: '投稿者', value: authorNameToSave, inline: true },
+              { name: 'タグ', value: tags.length > 0 ? tags.join(', ') : 'なし', inline: true }
+            )
+            .setTimestamp();
+
+          embed.setImage(directUrl); // 直接URLを画像として設定
+
+          archiveMessage = await archiveChannel.send({
+            content: `元URL: ${directUrl}\n投稿者: ${authorNameToSave}\nタグ: ${tags.join(', ')}\n説明: ${description || 'なし'}`,
+            embeds: [embed]
+          });
+        } catch (error) {
+          console.error('アーカイブチャンネルへのメッセージ送信中にエラーが発生しました:', error);
+          return interaction.editReply('メディアのアーカイブ中にエラーが発生しました。Botにアーカイブチャンネルへの送信権限があるか確認してください。');
+        }
       }
 
       addMedia(
         guild.id,
-        fetchedMessage.id,
-        fetchedMessage.channel.id,
+        mediaIdToSave, // メッセージIDまたはNULL
+        channelIdToSave, // チャンネルIDまたはNULL
         archiveMessage.id,
-        fetchedMessage.author.id,
-        fetchedMessage.author.username,
+        authorIdToSave,
+        authorNameToSave,
         description,
         tags,
         (err) => {
