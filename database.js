@@ -1,7 +1,15 @@
 const sqlite3 = require('sqlite3').verbose();
+const fs = require('fs');
+const path = require('path');
+
+const dataDir = './data';
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir);
+  console.log(`'${dataDir}' ディレクトリを作成しました。`);
+}
 
 // データベース接続を初期化
-const db = new sqlite3.Database('./data/game_gallery.db', (err) => {
+const db = new sqlite3.Database(path.join(dataDir, 'game_gallery.db'), (err) => {
   if (err) {
     console.error('データベース接続エラー:', err);
   } else {
