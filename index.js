@@ -161,13 +161,13 @@ client.on('interactionCreate', async interaction => {
           .setRequired(false);
 
         const firstActionRow = new ActionRowBuilder().addComponents(messageLinkInput);
-        const secondActionRow = new ActionRowBuilder().addComponents(tagsInput);
-        const thirdActionRow = new ActionRowBuilder().addComponents(descriptionInput);
+       const secondActionRow = new ActionRowBuilder().addComponents(tagsInput);
+       const thirdActionRow = new ActionRowBuilder().addComponents(descriptionInput);
 
-        modal.addComponents(firstActionRow, secondActionRow, thirdActionRow);
+       modal.addComponents(firstActionRow, secondActionRow, thirdActionRow);
 
-        await interaction.showModal(modal);
-      } else if (commandName === 'gallery') {
+       await interaction.showModal(modal);
+     } else if (commandName === 'gallery') {
         const modal = new ModalBuilder()
           .setCustomId('gallerySearchModal')
           .setTitle('ギャラリーを検索');
