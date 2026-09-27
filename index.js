@@ -4,7 +4,7 @@ if (!process.env.DISCORD_TOKEN || !process.env.CLIENT_ID) {
   console.error('環境変数DISCORD_TOKENまたはCLIENT_IDが設定されていません！.envファイルまたはGitHub Secretsを確認してください。');
   process.exit(1);
 }
-const { Client, GatewayIntentBits, Collection, REST, Routes, EmbedBuilder, PermissionsBitField, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, REST, Routes, EmbedBuilder, PermissionsBitField, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const { db, addMedia, searchMediaByTags, getAllMedia, deleteMedia, getMyMedia, searchMediaByAuthor } = require('./database.js');
 
 // Botクライアントの初期化
