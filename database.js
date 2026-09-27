@@ -1,15 +1,7 @@
 const sqlite3 = require('sqlite3').verbose();
-const fs = require('fs');
-const path = require('path');
-
-const dataDir = './data';
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir);
-  console.log(`'${dataDir}' ディレクトリを作成しました。`);
-}
 
 // データベース接続を初期化
-const db = new sqlite3.Database(path.join(dataDir, 'game_gallery.db'), (err) => {
+const db = new sqlite3.Database('./game_gallery.db', (err) => {
   if (err) {
     console.error('データベース接続エラー:', err);
   } else {
@@ -24,8 +16,8 @@ function initDatabase() {
   db.run(`CREATE TABLE IF NOT EXISTS media (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
-    message_id TEXT UNIQUE,
-    channel_id TEXT,
+    message_id TEXT UNIQUE NOT NULL,
+    channel_id TEXT NOT NULL,
     archive_message_id TEXT,
     author_id TEXT NOT NULL,
     author_name TEXT NOT NULL,
