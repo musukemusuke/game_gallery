@@ -122,10 +122,18 @@ client.on('clientReady', async () => {
 });
 
 client.on('interactionCreate', async interaction => {
-  if (!interaction.isChatInputCommand() && !interaction.isModalSubmit() && !interaction.isButton()) return;
+  console.log(`[${new Date().toISOString()}] インタラクションを受信しました: タイプ=${interaction.type}, コマンド=${interaction.isCommand() ? interaction.commandName : 'N/A'}, カスタムID=${interaction.isModalSubmit() || interaction.isButton() ? interaction.customId : 'N/A'}`);
+
+  if (!interaction.isChatInputCommand() && !interaction.isModalSubmit() && !interaction.isButton()) {
+    console.log(`[${new Date().toISOString()}] 未対応のインタラクションタイプ: ${interaction.type}`);
+    return;
+  }
 
   const { commandName, guild } = interaction;
-  if (!guild) return;
+  if (!guild) {
+    console.log(`[${new Date().toISOString()}] ギルド情報がありません。`);
+    return;
+  }
 
   // コマンド実行者がサーバーオーナーか確認 (isChatInputCommandの場合のみ)
   if (interaction.isChatInputCommand()) {
@@ -166,8 +174,9 @@ client.on('interactionCreate', async interaction => {
 
        modal.addComponents(firstActionRow, secondActionRow, thirdActionRow);
 
-       await interaction.showModal(modal);
-     } else if (commandName === 'gallery') {
+       console.log(`[${new Date().toISOString()}] /add コマンド: モーダル表示を試行します。`);
+        await interaction.showModal(modal);
+      } else if (commandName === 'gallery') {
         const modal = new ModalBuilder()
           .setCustomId('gallerySearchModal')
           .setTitle('ギャラリーを検索');
@@ -189,6 +198,7 @@ client.on('interactionCreate', async interaction => {
 
         modal.addComponents(firstActionRow, secondActionRow);
 
+        console.log(`[${new Date().toISOString()}] /gallery コマンド: モーダル表示を試行します。`);
         await interaction.showModal(modal);
       } else if (commandName === 'delete') {
         const modal = new ModalBuilder()
@@ -203,11 +213,13 @@ client.on('interactionCreate', async interaction => {
 
         const firstActionRow = new ActionRowBuilder().addComponents(mediaIdInput);
         modal.addComponents(firstActionRow);
+        console.log(`[${new Date().toISOString()}] /delete コマンド: モーダル表示を試行します。`);
         await interaction.showModal(modal);
       } else if (commandName === 'help') {
-        await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
-        
-        const helpEmbed = new EmbedBuilder()
+        console.log(`[${new Date().toISOString()}] /help コマンド: deferReply を試行します。`);
+      await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+      
+      const helpEmbed = new EmbedBuilder()
           .setTitle('🎮 ゲームギャラリーbot 使い方')
           .setColor(0x5865F2)
           .setDescription('ゲームのスクショ・動画を保存・共有するBotです')
@@ -235,6 +247,7 @@ client.on('interactionCreate', async interaction => {
       }
     } else if (interaction.isModalSubmit()) {
     if (interaction.customId === 'addMediaModal') {
+      console.log(`[${new Date().toISOString()}] addMediaModal: deferReply を試行します。`);
       await interaction.deferReply({ ephemeral: true });
 
       const messageLink = interaction.fields.getTextInputValue('messageLinkInput');
@@ -299,6 +312,7 @@ client.on('interactionCreate', async interaction => {
         }
       );
     } else if (interaction.customId === 'gallerySearchModal') {
+      console.log(`[${new Date().toISOString()}] gallerySearchModal: deferReply を試行します。`);
       await interaction.deferReply();
 
       const tags = interaction.fields.getTextInputValue('tagsInput').split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
@@ -369,6 +383,7 @@ client.on('interactionCreate', async interaction => {
         components: getGalleryComponents(0)
       });
     } else if (interaction.customId === 'deleteMediaModal') {
+      console.log(`[${new Date().toISOString()}] deleteMediaModal: deferReply を試行します。`);
       await interaction.deferReply({ ephemeral: true });
 
       const mediaId = interaction.fields.getTextInputValue('mediaIdInput');
@@ -460,6 +475,7 @@ client.on('interactionCreate', async interaction => {
           components: getGalleryComponents(newPage)
         });
       } else {
+        console.log(`[${new Date().toISOString()}] ボタンインタラクション: deferUpdate を試行します。`);
         await interaction.deferUpdate();
       }
     }
