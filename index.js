@@ -259,24 +259,30 @@ client.on('interactionCreate', async interaction => {
         content: `添付ファイル一覧:\n${attachmentsText}`
       });
       
-      // データベースに登録
-      addMedia(
-        guild.id,
-        sentMessage.id,
-        archiveChannel.id,
-        sentMessage.id,
-        interaction.user.id,
-        interaction.user.username,
-        description,
-        tags,
-        (err, mediaId) => {
-          if (err) {
-            console.error('データベース登録エラー:', err);
-            return interaction.editReply('データベースへの追加中にエラーが発生しました。');
+      // データベースに登録（Promise化してawaitで待機）
+      await new Promise((resolve, reject) => {
+        addMedia(
+          guild.id,
+          sentMessage.id,
+          archiveChannel.id,
+          sentMessage.id,
+          interaction.user.id,
+          interaction.user.username,
+          description,
+          tags,
+          (err, mediaId) => {
+            if (err) {
+              console.error('データベース登録エラー:', err);
+              return reject(err);
+            }
+            resolve(mediaId);
           }
-          interaction.editReply(`✅ ゲームギャラリーに追加しました！\nID: ${mediaId}\n#${tags.join(' #')}`);
-        }
-      );
+        );
+      }).then(mediaId => {
+        interaction.editReply(`✅ ゲームギャラリーに追加しました！\nID: ${mediaId}\n#${tags.join(' #')}`);
+      }).catch(err => {
+        interaction.editReply('データベースへの追加中にエラーが発生しました。');
+      });
       
     } catch (error) {
       console.error('addコマンドエラー:', error);
@@ -307,7 +313,7 @@ client.on('interactionCreate', async interaction => {
         });
       } else {
         results = await new Promise((resolve, reject) => {
-          getMyMedia(guild.id, interaction.user.id, (err, rows) => {
+          getAllMedia(guild.id, (err, rows) => {
             if (err) return reject(err);
             resolve(rows);
           });
@@ -321,34 +327,35 @@ client.on('interactionCreate', async interaction => {
       // 最初の1件を画像付きで表示（ページング対応）
       const currentPage = 0;
       const item = results[currentPage];
-      // キャッシュにあるチャンネルを優先的に使用、なければfetch（タイムアウト短縮）
-      let channel = guild.channels.cache.get(item.channel_id);
-      if (!channel) {
-        try {
-          channel = await guild.channels.fetch(item.channel_id, { force: false, cache: true });
-        } catch (err) {
-          console.log('アーカイブチャンネルの取得に失敗:', err);
-        }
+      // キャッシュにない場合もfetchで取得するように修正
+      let channel = null;
+      try {
+        channel = await guild.channels.fetch(item.channel_id);
+      } catch (err) {
+        console.log('アーカイブチャンネルの取得に失敗:', err);
       }
+      const jumpUrl = channel ? `https://discord.com/channels/${guild.id}/${item.channel_id}/${item.message_id}` : 'リンク無効';
       
       // JSTで日付をフォーマット
       const jstDate = new Date(item.timestamp);
       jstDate.setHours(jstDate.getHours() + 9); // UTCからJSTに変換
       const formattedDate = jstDate.toLocaleDateString('ja-JP');
       
-      // itemに保存されているmessage_urlを優先的に使用（画像取得の高速化）
-      let imageUrl = item.message_url || null;
-      
-      // どうしてもアーカイブメッセージから取得したい場合のみfetchを実行
-      if (!imageUrl && channel) {
+      // アーカイブメッセージから画像URLを取得、失敗してもitemにmessage_urlがあればそれを使う
+      let imageUrl = null;
+      if (channel) {
         try {
-          const archiveMessage = await channel.messages.fetch(item.message_id, { force: false, cache: true });
+          const archiveMessage = await channel.messages.fetch(item.message_id);
           if (archiveMessage.embeds.length > 0 && archiveMessage.embeds[0].image) {
             imageUrl = archiveMessage.embeds[0].image.url;
           }
         } catch (err) {
-          console.log('アーカイブメッセージの取得に失敗、代替URLを使用します:', err);
+          console.log('アーカイブメッセージの取得に失敗、元のURLを使用します:', err);
         }
+      }
+      // アーカイブから取得できなかった場合、itemに保存されているURLを直接使用
+      if (!imageUrl && item.message_url) {
+        imageUrl = item.message_url;
       }
       
       let title = `🎮 ゲームギャラリー (${currentPage + 1}/${results.length})`;
@@ -518,14 +525,19 @@ client.on('interactionCreate', async interaction => {
           }
         }
 
-        // データベースから削除
-        deleteMedia(guild.id, mediaId, async (err, changes) => {
-          if (err) {
-            console.error('データベース削除エラー:', err);
-            return interaction.editReply('削除中にエラーが発生しました。');
-          }
-          
+        // データベースから削除（Promise化してawaitで待機）
+        await new Promise((resolve, reject) => {
+          deleteMedia(guild.id, mediaId, (err, changes) => {
+            if (err) {
+              console.error('データベース削除エラー:', err);
+              return reject(err);
+            }
+            resolve(changes);
+          });
+        }).then(() => {
           interaction.editReply(`✅ ID:${mediaId}のメディアをアーカイブからも削除しました。`);
+        }).catch(() => {
+          interaction.editReply('削除中にエラーが発生しました。');
         });
       });
       
@@ -705,34 +717,35 @@ client.on('interactionCreate', async interaction => {
         }
         
         const item = state.results[state.currentPage];
-        // キャッシュにあるチャンネルを優先的に使用、なければfetch（タイムアウト短縮）
-        let channel = guild.channels.cache.get(item.channel_id);
-        if (!channel) {
-          try {
-            channel = await guild.channels.fetch(item.channel_id, { force: false, cache: true });
-          } catch (err) {
-            console.log('アーカイブチャンネルの取得に失敗:', err);
-          }
+        // キャッシュにない場合もfetchで取得するように修正
+        let channel = null;
+        try {
+          channel = await guild.channels.fetch(item.channel_id);
+        } catch (err) {
+          console.log('アーカイブチャンネルの取得に失敗:', err);
         }
+        const jumpUrl = channel ? `https://discord.com/channels/${state.guildId}/${item.channel_id}/${item.message_id}` : 'リンク無効';
         
         // JSTで日付をフォーマット
         const jstDate = new Date(item.timestamp);
         jstDate.setHours(jstDate.getHours() + 9);
         const formattedDate = jstDate.toLocaleDateString('ja-JP');
         
-        // itemに保存されているmessage_urlを優先的に使用（画像取得の高速化）
-        let imageUrl = item.message_url || null;
-        
-        // どうしてもアーカイブメッセージから取得したい場合のみfetchを実行
-        if (!imageUrl && channel) {
+        // アーカイブメッセージから画像URLを取得、失敗してもitemにmessage_urlがあればそれを使う
+        let imageUrl = null;
+        if (channel) {
           try {
-            const archiveMessage = await channel.messages.fetch(item.message_id, { force: false, cache: true });
+            const archiveMessage = await channel.messages.fetch(item.message_id);
             if (archiveMessage.embeds.length > 0 && archiveMessage.embeds[0].image) {
               imageUrl = archiveMessage.embeds[0].image.url;
             }
           } catch (err) {
-            console.log('アーカイブメッセージの取得に失敗、代替URLを使用します:', err);
+            console.log('アーカイブメッセージの取得に失敗、元のURLを使用します:', err);
           }
+        }
+        // アーカイブから取得できなかった場合、itemに保存されているURLを直接使用
+        if (!imageUrl && item.message_url) {
+          imageUrl = item.message_url;
         }
         
         // タイトルを更新
