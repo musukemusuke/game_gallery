@@ -4,7 +4,7 @@ if (!process.env.DISCORD_TOKEN || !process.env.CLIENT_ID) {
   console.error('環境変数DISCORD_TOKENまたはCLIENT_IDが設定されていません！.envファイルまたはGitHub Secretsを確認してください。');
   process.exit(1);
 }
-const { Client, GatewayIntentBits, Collection, REST, Routes, EmbedBuilder, PermissionsBitField, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, REST, Routes, EmbedBuilder, PermissionsBitField, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const { db, addMedia, searchMediaByTags, getAllMedia, deleteMedia, getMyMedia, searchMediaByAuthor } = require('./database.js');
 
 // Botクライアントの初期化
@@ -20,57 +20,18 @@ const client = new Client({
 const commands = [
   {
     name: 'add',
-    description: 'ゲームのスクリーンショットや動画をギャラリーに追加します',
-    options: [
-      {
-        type: 3,
-        name: 'message_link',
-        description: '保存したいメッセージのリンク',
-        required: true,
-      },
-      {
-        type: 3,
-        name: 'tags',
-        description: 'カンマ区切りでタグを指定（例：rpg, オープンワールド, steam）',
-        required: false,
-      },
-      {
-        type: 3,
-        name: 'description',
-        description: 'メディアの説明',
-        required: false,
-      }
-    ]
+    description: 'ゲームのスクリーンショットや動画をギャラリーに追加します（モーダルで入力）',
+    options: []
   },
   {
     name: 'gallery',
-    description: 'ギャラリーに保存されているメディアの一覧を表示します',
-    options: [
-      {
-        type: 3,
-        name: 'tags',
-        description: 'フィルタリングするタグ（カンマ区切り、任意）',
-        required: false,
-      },
-      {
-        type: 3,
-        name: 'author',
-        description: '検索する投稿者の名前（任意）',
-        required: false,
-      }
-    ]
+    description: 'ギャラリーに保存されているメディアの一覧を表示します（モーダルで入力）',
+    options: []
   },
   {
     name: 'delete',
-    description: 'ギャラリーから指定したIDのメディアを削除します',
-    options: [
-      {
-        type: 4,
-        name: 'media_id',
-        description: '削除したいメディアのID（/galleryで確認可能）',
-        required: true,
-      }
-    ]
+    description: 'ギャラリーから指定したIDのメディアを削除します（モーダルで入力）',
+    options: []
   },
   {
     name: 'help',
@@ -187,13 +148,57 @@ client.on('interactionCreate', async interaction => {
   }
   
   if (commandName === 'add') {
-    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+    // /addコマンド実行時にモーダルを表示
+    const modal = new ModalBuilder()
+      .setCustomId('addMediaModal')
+      .setTitle('ギャラリーにメディアを追加');
     
-    try {
-      const messageLink = interaction.options.getString('message_link');
-      const tagsStr = interaction.options.getString('tags');
-      const description = interaction.options.getString('description') || '';
-      const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(t => t) : [];
+    // メッセージリンクの入力欄
+    const messageLinkInput = new TextInputBuilder()
+      .setCustomId('message_link')
+      .setLabel('保存したいメッセージのリンク')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setPlaceholder('https://discord.com/channels/...');
+    
+    // タグの入力欄
+    const tagsInput = new TextInputBuilder()
+      .setCustomId('tags')
+      .setLabel('カンマ区切りでタグを指定（任意）')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false)
+      .setPlaceholder('rpg, オープンワールド, steam');
+    
+    // 説明の入力欄
+    const descriptionInput = new TextInputBuilder()
+      .setCustomId('description')
+      .setLabel('メディアの説明（任意）')
+      .setStyle(TextInputStyle.Paragraph)
+      .setRequired(false)
+      .setPlaceholder('このゲームの説明を入力...');
+    
+    // アクションロウに入力欄を追加
+    const firstRow = new ActionRowBuilder().addComponents(messageLinkInput);
+    const secondRow = new ActionRowBuilder().addComponents(tagsInput);
+    const thirdRow = new ActionRowBuilder().addComponents(descriptionInput);
+    
+    modal.addComponents(firstRow, secondRow, thirdRow);
+    
+    // モーダルを表示
+    await interaction.showModal(modal);
+    return;
+  }
+  
+  // モーダルからの入力を処理
+  if (interaction.isModalSubmit()) {
+    if (interaction.customId === 'addMediaModal') {
+      await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+      
+      try {
+        const messageLink = interaction.fields.getTextInputValue('message_link');
+        const tagsStr = interaction.fields.getTextInputValue('tags') || '';
+        const description = interaction.fields.getTextInputValue('description') || '';
+        const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(t => t) : [];
       
       // 画像直接URLかメッセージリンクかを判定
       const imageUrlMatch = messageLink.match(/^https:\/\/cdn\.discordapp\.com\/attachments\//);
@@ -280,11 +285,42 @@ client.on('interactionCreate', async interaction => {
   }
   
   if (commandName === 'gallery') {
+    // /galleryコマンド実行時にモーダルを表示
+    const modal = new ModalBuilder()
+      .setCustomId('galleryFilterModal')
+      .setTitle('ギャラリーの検索条件を入力');
+    
+    // タグの入力欄
+    const tagsInput = new TextInputBuilder()
+      .setCustomId('tags')
+      .setLabel('フィルタリングするタグ（カンマ区切り、任意）')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false)
+      .setPlaceholder('rpg, steam');
+    
+    // 投稿者名の入力欄
+    const authorInput = new TextInputBuilder()
+      .setCustomId('author')
+      .setLabel('検索する投稿者の名前（任意）')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false)
+      .setPlaceholder('username');
+    
+    const firstRow = new ActionRowBuilder().addComponents(tagsInput);
+    const secondRow = new ActionRowBuilder().addComponents(authorInput);
+    modal.addComponents(firstRow, secondRow);
+    
+    await interaction.showModal(modal);
+    return;
+  }
+  
+  // gallery用モーダルの処理
+  if (interaction.customId === 'galleryFilterModal') {
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
     
     try {
-      const tagsStr = interaction.options.getString('tags');
-      const authorStr = interaction.options.getString('author');
+      const tagsStr = interaction.fields.getTextInputValue('tags') || '';
+      const authorStr = interaction.fields.getTextInputValue('author') || '';
       const searchTags = tagsStr ? tagsStr.split(',').map(t => t.trim().toLowerCase()).filter(t => t) : [];
       
       let results;
@@ -503,10 +539,32 @@ client.on('interactionCreate', async interaction => {
   }
   
   if (commandName === 'delete') {
+    // /deleteコマンド実行時にモーダルを表示
+    const modal = new ModalBuilder()
+      .setCustomId('deleteMediaModal')
+      .setTitle('ギャラリーからメディアを削除');
+    
+    // 削除するメディアIDの入力欄
+    const mediaIdInput = new TextInputBuilder()
+      .setCustomId('media_id')
+      .setLabel('削除したいメディアのID（/galleryで確認可能）')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setPlaceholder('123');
+    
+    const firstRow = new ActionRowBuilder().addComponents(mediaIdInput);
+    modal.addComponents(firstRow);
+    
+    await interaction.showModal(modal);
+    return;
+  }
+  
+  // delete用モーダルの処理
+  if (interaction.customId === 'deleteMediaModal') {
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
     
     try {
-      const mediaId = interaction.options.getInteger('media_id');
+      const mediaId = parseInt(interaction.fields.getTextInputValue('media_id'));
       
       // データベースからメディア情報と投稿者IDを取得（本人確認のため）
       db.get(`SELECT archive_message_id, author_id FROM media WHERE guild_id = ? AND id = ?`, [guild.id, mediaId], async (err, row) => {
