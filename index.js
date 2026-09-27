@@ -133,10 +133,12 @@ client.on('guildCreate', async (guild) => {
 
 // インタラクション処理
 client.on('interactionCreate', async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-  
-  const { commandName, guild } = interaction;
+  const { guild } = interaction;
   if (!guild) return;
+  
+  // チャット入力コマンドの場合
+  if (interaction.isChatInputCommand()) {
+    const { commandName } = interaction;
   
   // コマンド実行者がサーバーオーナーか確認
   const owner = await guild.fetchOwner();
@@ -259,30 +261,24 @@ client.on('interactionCreate', async interaction => {
         content: `添付ファイル一覧:\n${attachmentsText}`
       });
       
-      // データベースに登録（Promise化してawaitで待機）
-      await new Promise((resolve, reject) => {
-        addMedia(
-          guild.id,
-          sentMessage.id,
-          archiveChannel.id,
-          sentMessage.id,
-          interaction.user.id,
-          interaction.user.username,
-          description,
-          tags,
-          (err, mediaId) => {
-            if (err) {
-              console.error('データベース登録エラー:', err);
-              return reject(err);
-            }
-            resolve(mediaId);
+      // データベースに登録
+      addMedia(
+        guild.id,
+        sentMessage.id,
+        archiveChannel.id,
+        sentMessage.id,
+        interaction.user.id,
+        interaction.user.username,
+        description,
+        tags,
+        (err, mediaId) => {
+          if (err) {
+            console.error('データベース登録エラー:', err);
+            return interaction.editReply('データベースへの追加中にエラーが発生しました。');
           }
-        );
-      }).then(mediaId => {
-        interaction.editReply(`✅ ゲームギャラリーに追加しました！\nID: ${mediaId}\n#${tags.join(' #')}`);
-      }).catch(err => {
-        interaction.editReply('データベースへの追加中にエラーが発生しました。');
-      });
+          interaction.editReply(`✅ ゲームギャラリーに追加しました！\nID: ${mediaId}\n#${tags.join(' #')}`);
+        }
+      );
       
     } catch (error) {
       console.error('addコマンドエラー:', error);
@@ -313,7 +309,7 @@ client.on('interactionCreate', async interaction => {
         });
       } else {
         results = await new Promise((resolve, reject) => {
-          getAllMedia(guild.id, (err, rows) => {
+          getMyMedia(guild.id, interaction.user.id, (err, rows) => {
             if (err) return reject(err);
             resolve(rows);
           });
@@ -525,19 +521,14 @@ client.on('interactionCreate', async interaction => {
           }
         }
 
-        // データベースから削除（Promise化してawaitで待機）
-        await new Promise((resolve, reject) => {
-          deleteMedia(guild.id, mediaId, (err, changes) => {
-            if (err) {
-              console.error('データベース削除エラー:', err);
-              return reject(err);
-            }
-            resolve(changes);
-          });
-        }).then(() => {
+        // データベースから削除
+        deleteMedia(guild.id, mediaId, async (err, changes) => {
+          if (err) {
+            console.error('データベース削除エラー:', err);
+            return interaction.editReply('削除中にエラーが発生しました。');
+          }
+          
           interaction.editReply(`✅ ID:${mediaId}のメディアをアーカイブからも削除しました。`);
-        }).catch(() => {
-          interaction.editReply('削除中にエラーが発生しました。');
         });
       });
       
@@ -578,8 +569,153 @@ client.on('interactionCreate', async interaction => {
     return;
   }
   
-  // gallery用モーダルの処理
-  if (interaction.customId === 'galleryFilterModal') {
+
+  
+  if (commandName === 'delete') {
+    // /deleteコマンド実行時にモーダルを表示
+    const modal = new ModalBuilder()
+      .setCustomId('deleteMediaModal')
+      .setTitle('ギャラリーからメディアを削除');
+    
+    // 削除するメディアIDの入力欄
+    const mediaIdInput = new TextInputBuilder()
+      .setCustomId('media_id')
+      .setLabel('削除したいメディアのID（/galleryで確認可能）')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setPlaceholder('123');
+    
+    const firstRow = new ActionRowBuilder().addComponents(mediaIdInput);
+    modal.addComponents(firstRow);
+    
+    await interaction.showModal(modal);
+    return;
+  }
+if (commandName === 'help') {
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+    
+    const helpEmbed = new EmbedBuilder()
+      .setTitle('🎮 ゲームギャラリーbot 使い方')
+      .setColor(0x5865F2)
+      .setDescription('ゲームのスクショ・動画を保存・共有するBotです')
+      .addFields(
+        {
+          name: '➕ /add',
+          value: 'メディアを追加\n`<message_link>`（必須）保存したいメッセージのリンク\n`[tags]`（任意）カンマ区切りのタグ\n`[description]`（任意）メディアの説明\n※「アーカイブ」チャンネルにも保存されます'
+        },
+        {
+          name: '🖼️ /gallery',
+          value: 'メディア一覧を表示\n`[tags]`（任意）タグで絞り込み\n`[author]`（任意）投稿者名で検索\n✅ デフォルト：自分の投稿のみ表示\n✅ ボタンでページ送り可能（10件/ページ）'
+        },
+        {
+          name: '🗑️ /delete',
+          value: 'メディアを削除\n`<media_id>`（必須）削除したいID（/galleryで確認）\n✅ 本人またはサーバーオーナーのみ実行可\n※ギャラリーとアーカイブ両方から削除'
+        },
+        {
+          name: '❓ /help',
+          value: 'このヘルプを表示します'
+        }
+      )
+      .setFooter({ text: 'メッセージリンクの取得方法：PCの場合→メッセージを右クリック→「メッセージリンクをコピー」｜スマホの場合→メッセージを長押し→「リンクをコピー」' });
+    
+    await interaction.editReply({ embeds: [helpEmbed] });
+  }
+  } // チャット入力コマンドのブロックを閉じる
+  
+  // モーダルからの入力を処理
+  if (interaction.isModalSubmit()) {
+    if (interaction.customId === 'addMediaModal') {
+      await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+      
+      try {
+        const messageLink = interaction.fields.getTextInputValue('message_link');
+        const tagsStr = interaction.fields.getTextInputValue('tags') || '';
+        const description = interaction.fields.getTextInputValue('description') || '';
+        const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(t => t) : [];
+      
+      // 画像直接URLかメッセージリンクかを判定
+      const imageUrlMatch = messageLink.match(/^https:\/\/cdn\.discordapp\.com\/attachments\//);
+      let targetAttachments = [];
+      let authorId = interaction.user.id;
+      let authorName = interaction.user.username;
+      
+      if (imageUrlMatch) {
+        // 直接画像URLが渡された場合
+        targetAttachments = [{ url: messageLink }];
+      } else {
+        // 通常のメッセージリンクの場合
+        const targetMessage = await fetchMessageFromLink(messageLink, guild);
+        if (!targetMessage) {
+          return interaction.editReply('メッセージが見つかりませんでした。リンクが正しいか確認してください。');
+        }
+        
+        const hasAttachments = targetMessage.attachments.size > 0;
+        if (!hasAttachments) {
+          return interaction.editReply('指定されたメッセージに画像や動画の添付ファイルが含まれていません。');
+        }
+        
+        targetAttachments = Array.from(targetMessage.attachments.values());
+        authorId = targetMessage.author.id;
+        authorName = targetMessage.author.username;
+      }
+      
+      // archiveチャンネルを取得
+      const archiveChannel = await getOrCreateArchiveChannel(guild);
+      if (!archiveChannel) {
+        return interaction.editReply('⚠️ アーカイブチャンネルの作成に失敗しました。サーバー管理者に以下を依頼してください：\n1. Botに「チャンネルを管理する」権限を付与する\n2. または手動で「アーカイブ」という名前のテキストチャンネルを作成する');
+      }
+      
+      // アーカイブチャンネルに転記
+      const galleryEmbed = new EmbedBuilder()
+        .setTitle('🎮 ゲームギャラリーに追加')
+        .setDescription(description || '説明なし')
+        .addFields(
+          { name: '投稿者', value: `<@${authorId}>`, inline: true },
+          { name: '元のリンク', value: `[リンク](${messageLink})`, inline: true }
+        )
+        .setTimestamp()
+        .setColor(0x5865F2);
+      
+      if (tags.length > 0) {
+        galleryEmbed.addFields({ name: 'タグ', value: tags.map(t => `#${t}`).join(' ') });
+      }
+      
+      // 最初の添付ファイルを埋め込み
+      if (targetAttachments[0] && targetAttachments[0].url) {
+        galleryEmbed.setImage(targetAttachments[0].url);
+      }
+      
+      // 全ての添付ファイルのURLを追加
+      let attachmentsText = targetAttachments.map(a => a.url).join('\n');
+      const sentMessage = await archiveChannel.send({
+        embeds: [galleryEmbed],
+        content: `添付ファイル一覧:\n${attachmentsText}`
+      });
+      
+      // データベースに登録
+      addMedia(
+        guild.id,
+        sentMessage.id,
+        archiveChannel.id,
+        sentMessage.id,
+        interaction.user.id,
+        interaction.user.username,
+        description,
+        tags,
+        (err, mediaId) => {
+          if (err) {
+            console.error('データベース登録エラー:', err);
+            return interaction.editReply('データベースへの追加中にエラーが発生しました。');
+          }
+          interaction.editReply(`✅ ゲームギャラリーに追加しました！\nID: ${mediaId}\n#${tags.join(' #')}`);
+        }
+      );
+      
+    } catch (error) {
+      console.error('addコマンドエラー:', error);
+      interaction.editReply('コマンドの実行中にエラーが発生しました。');
+    }
+  } else if (interaction.customId === 'galleryFilterModal') {
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
     
     try {
@@ -694,84 +830,68 @@ client.on('interactionCreate', async interaction => {
       galleryStates.set(stateId, {
         results,
         currentPage,
-        guildId: guild.id,
+        authorStr,
         searchTags,
-        authorStr
+        guildId: guild.id
       });
       
       await interaction.editReply({ embeds: [embed], components: [row] });
       
-      // ボタンのインタラクションを処理するリスナーを一時的に設定
-      const filter = i => i.user.id === interaction.user.id && (i.customId === 'prev_page' || i.customId === 'next_page');
-      const collector = interaction.channel.createMessageComponentCollector({ filter, time: 60000 }); // 60秒間有効
-      
+      // ボタンのインタラクションを処理
+      const collector = interaction.channel.createMessageComponentCollector({ time: 300000 });
       collector.on('collect', async i => {
+        if (i.user.id !== interaction.user.id) return;
+        
         const state = galleryStates.get(stateId);
         if (!state) return;
         
-        // ページを更新
-        if (i.customId === 'prev_page') {
+        if (i.customId === 'prev_page' && state.currentPage > 0) {
           state.currentPage--;
-        } else if (i.customId === 'next_page') {
+        } else if (i.customId === 'next_page' && state.currentPage < state.results.length - 1) {
           state.currentPage++;
         }
         
-        const item = state.results[state.currentPage];
-        // キャッシュにない場合もfetchで取得するように修正
-        let channel = null;
+        const newItem = state.results[state.currentPage];
+        let newImageUrl = null;
         try {
-          channel = await guild.channels.fetch(item.channel_id);
-        } catch (err) {
-          console.log('アーカイブチャンネルの取得に失敗:', err);
-        }
-        const jumpUrl = channel ? `https://discord.com/channels/${state.guildId}/${item.channel_id}/${item.message_id}` : 'リンク無効';
-        
-        // JSTで日付をフォーマット
-        const jstDate = new Date(item.timestamp);
-        jstDate.setHours(jstDate.getHours() + 9);
-        const formattedDate = jstDate.toLocaleDateString('ja-JP');
-        
-        // アーカイブメッセージから画像URLを取得、失敗してもitemにmessage_urlがあればそれを使う
-        let imageUrl = null;
-        if (channel) {
-          try {
-            const archiveMessage = await channel.messages.fetch(item.message_id);
-            if (archiveMessage.embeds.length > 0 && archiveMessage.embeds[0].image) {
-              imageUrl = archiveMessage.embeds[0].image.url;
+          const newChannel = await guild.channels.fetch(newItem.channel_id);
+          if (newChannel) {
+            const newArchiveMessage = await newChannel.messages.fetch(newItem.message_id);
+            if (newArchiveMessage.embeds.length > 0 && newArchiveMessage.embeds[0].image) {
+              newImageUrl = newArchiveMessage.embeds[0].image.url;
             }
-          } catch (err) {
-            console.log('アーカイブメッセージの取得に失敗、元のURLを使用します:', err);
           }
+        } catch (err) {
+          console.log('アーカイブメッセージの取得に失敗、元のURLを使用します:', err);
         }
-        // アーカイブから取得できなかった場合、itemに保存されているURLを直接使用
-        if (!imageUrl && item.message_url) {
-          imageUrl = item.message_url;
+        if (!newImageUrl && newItem.message_url) {
+          newImageUrl = newItem.message_url;
         }
         
         // タイトルを更新
-        let title = `🎮 ゲームギャラリー (${state.currentPage + 1}/${state.results.length})`;
+        let newTitle = `🎮 ゲームギャラリー (${state.currentPage + 1}/${state.results.length})`;
         if (state.authorStr) {
-          title = `🎮 投稿者検索結果: 「${state.authorStr}」さんの投稿 (${state.currentPage + 1}/${state.results.length})`;
+          newTitle = `🎮 投稿者検索結果: 「${state.authorStr}」さんの投稿 (${state.currentPage + 1}/${state.results.length})`;
         } else if (state.searchTags.length > 0) {
-          title = `🎮 タグ検索結果: #${state.searchTags.join(' #')} (${state.currentPage + 1}/${state.results.length})`;
+          newTitle = `🎮 タグ検索結果: #${state.searchTags.join(' #')} (${state.currentPage + 1}/${state.results.length})`;
         } else {
-          title = `🎮 あなたの投稿 (${state.currentPage + 1}/${state.results.length})`;
+          newTitle = `🎮 あなたの投稿 (${state.currentPage + 1}/${results.length})`;
         }
         
         const newEmbed = new EmbedBuilder()
-          .setTitle(title)
+          .setTitle(newTitle)
           .setColor(0x57F287)
           .addFields(
-            { name: 'ID', value: String(item.id), inline: true },
+            { name: 'ID', value: String(newItem.id), inline: true },
             { name: '投稿日', value: formattedDate, inline: true },
-            { name: '投稿者', value: item.author_name, inline: true },
-            { name: 'タグ', value: item.tags ? item.tags.split(',').map(t => `#${t}`).join(' ') : 'なし' },
-            { name: '説明', value: item.description || '説明なし' }
+            { name: '投稿者', value: newItem.author_name, inline: true },
+            { name: 'タグ', value: newItem.tags ? newItem.tags.split(',').map(t => `#${t}`).join(' ') : 'なし' },
+            { name: '説明', value: newItem.description || '説明なし' }
           )
           .setTimestamp();
         
-        if (imageUrl) {
-          newEmbed.setImage(imageUrl);
+        if (newImageUrl) {
+          newEmbed.setImage(newImageUrl);
         }
         
         // ボタンの状態を更新
@@ -800,30 +920,7 @@ client.on('interactionCreate', async interaction => {
         console.error('galleryコマンドエラー:', error);
         interaction.editReply('コマンドの実行中にエラーが発生しました。');
       }
-  
-  if (commandName === 'delete') {
-    // /deleteコマンド実行時にモーダルを表示
-    const modal = new ModalBuilder()
-      .setCustomId('deleteMediaModal')
-      .setTitle('ギャラリーからメディアを削除');
-    
-    // 削除するメディアIDの入力欄
-    const mediaIdInput = new TextInputBuilder()
-      .setCustomId('media_id')
-      .setLabel('削除したいメディアのID（/galleryで確認可能）')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true)
-      .setPlaceholder('123');
-    
-    const firstRow = new ActionRowBuilder().addComponents(mediaIdInput);
-    modal.addComponents(firstRow);
-    
-    await interaction.showModal(modal);
-    return;
-  }
-  
-  // delete用モーダルの処理
-  if (interaction.customId === 'deleteMediaModal') {
+  } else if (interaction.customId === 'deleteMediaModal') {
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
     
     try {
@@ -872,36 +969,6 @@ client.on('interactionCreate', async interaction => {
     }
   }
   } // isModalSubmit()ブロックを閉じる
-  
-  if (commandName === 'help') {
-    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
-    
-    const helpEmbed = new EmbedBuilder()
-      .setTitle('🎮 ゲームギャラリーbot 使い方')
-      .setColor(0x5865F2)
-      .setDescription('ゲームのスクショ・動画を保存・共有するBotです')
-      .addFields(
-        {
-          name: '➕ /add',
-          value: 'メディアを追加\n`<message_link>`（必須）保存したいメッセージのリンク\n`[tags]`（任意）カンマ区切りのタグ\n`[description]`（任意）メディアの説明\n※「アーカイブ」チャンネルにも保存されます'
-        },
-        {
-          name: '🖼️ /gallery',
-          value: 'メディア一覧を表示\n`[tags]`（任意）タグで絞り込み\n`[author]`（任意）投稿者名で検索\n✅ デフォルト：自分の投稿のみ表示\n✅ ボタンでページ送り可能（10件/ページ）'
-        },
-        {
-          name: '🗑️ /delete',
-          value: 'メディアを削除\n`<media_id>`（必須）削除したいID（/galleryで確認）\n✅ 本人またはサーバーオーナーのみ実行可\n※ギャラリーとアーカイブ両方から削除'
-        },
-        {
-          name: '❓ /help',
-          value: 'このヘルプを表示します'
-        }
-      )
-      .setFooter({ text: 'メッセージリンクの取得方法：PCの場合→メッセージを右クリック→「メッセージリンクをコピー」｜スマホの場合→メッセージを長押し→「リンクをコピー」' });
-    
-    await interaction.editReply({ embeds: [helpEmbed] });
-  }
 });
 
 // Botログイン
